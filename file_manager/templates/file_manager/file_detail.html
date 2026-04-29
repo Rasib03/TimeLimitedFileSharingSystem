@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ file.title }} | CloudDrive</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
+    {% if is_excel %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@latest/dist/plugins/css/pluginsCss.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@latest/dist/plugins/plugins.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@latest/dist/css/luckysheet.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@latest/dist/assets/iconfont/iconfont.css">
+    {% endif %}
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            color: #202124;
+            min-height: 100vh;
+        }
+
+        .topbar {
+            background: #fff;
+            border-bottom: 1px solid #e8eaed;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .topbar .file-title {
+            font-weight: 600;
+            font-size: 1.05rem;
+            color: #202124;
+        }
+
+        .topbar .meta {
+            font-size: 0.8rem;
+            color: #5f6368;
+        }
+
+        .timer-pill {
+            background: #e8f0fe;
+            color: #1a73e8;
+            border-radius: 20px;
+            padding: 4px 14px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .timer-pill.expired {
+            background: #fce8e6;
+            color: #d93025;
+        }
+
+        #luckysheet-container {
+            width: 100%;
+            height: calc(100vh - 60px);
+            position: relative;
+        }
+
+        .viewer-wrap {
+            max-width: 860px;
+            margin: 32px auto;
+            padding: 0 16px;
+        }
+
+        .detail-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        .card-header-custom {
+            background: #fff;
+            padding: 30px;
+            text-align: center;
+            border-bottom: 1px solid #f1f3f4;
+        }
+
+        .file-main-icon {
+            font-size: 4rem;
+            margin-bottom: 12px;
+        }
+
+        .action-area {
+            padding: 28px 30px;
+        }
+
+        .btn-download {
+            background-color: #1a73e8;
+            color: white;
+            border-radius: 8px;
+            padding: 12px;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-download:hover {
+            background-color: #1557b0;
+            color: white;
+            box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
+        }
+
+        .upload-section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 2px dashed #e8eaed;
+        }
+
+        .embed-viewer {
+            width: 100%;
+            height: 70vh;
+            border: none;
+            border-radius: 0 0 16px 16px;
+        }
+
+        .back-link {
+            text-decoration: none;
+            color: #5f6368;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .back-link:hover {
+            color: #202124;
+        }
+
+        #save-btn-wrap {
+            position: fixed;
+            bottom: 24px;
+            right: 28px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ══════════════════════════════════════════
+     TOP BAR
+══════════════════════════════════════════ -->
+    <div class="topbar">
+        <div class="d-flex align-items-center gap-3">
+            <a href="{% url 'dashboard' %}" class="back-link me-2">
+                <i class="bi bi-arrow-left me-1"></i> Back
+            </a>
+            <div>
+                <div class="file-title">{{ file.title }}</div>
+                <div class="meta">Shared by {{ file.master_user.username }}</div>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <span class="timer-pill" id="timer-pill">Calculating…</span>
+
+            <a href="{{ file.file.url }}" class="btn btn-sm btn-outline-primary" download>
+                <i class="bi bi-download me-1"></i> Download
+            </a>
+
+            {% if is_excel and file.is_editable %}
+            <button class="btn btn-sm btn-success fw-semibold" onclick="saveExcel()">
+                <i class="bi bi-floppy-fill me-1"></i> Save
+            </button>
+            {% endif %}
+
+            {% if request.user.is_staff and file.is_editable %}
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#replaceModal">
+                <i class="bi bi-arrow-repeat me-1"></i> Replace File
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════
+     EXCEL  →  Luckysheet inline editor
+══════════════════════════════════════════ -->
+    {% if is_excel %}
+
+    <div id="luckysheet-container"></div>
+
+    {% if file.is_editable %}
+    <div id="save-btn-wrap">
+        <button class="btn btn-success shadow fw-semibold px-4" onclick="saveExcel()">
+            <i class="bi bi-floppy-fill me-2"></i>Save Changes
+        </button>
+    </div>
+    {% endif %}
+
+
+    <!-- ══════════════════════════════════════════
+     PDF / DOCX / other  →  card + viewer
+══════════════════════════════════════════ -->
+    {% else %}
+
+    <div class="viewer-wrap">
+        <div class="detail-card">
+            <div class="card-header-custom">
+                {% if is_pdf %}
+                <i class="bi bi-file-earmark-pdf-fill file-main-icon text-danger"></i>
+                {% elif is_docx %}
+                <i class="bi bi-file-earmark-word-fill file-main-icon text-primary"></i>
+                {% else %}
+                <i class="bi bi-file-earmark-fill file-main-icon text-secondary"></i>
+                {% endif %}
+                <h4 class="fw-bold mb-1">{{ file.title }}</h4>
+                <p class="text-muted small">Shared by {{ file.master_user.username }}</p>
+            </div>
+
+            {% if is_pdf %}
+            <iframe class="embed-viewer" src="{{ file.file.url }}"></iframe>
+
+            {% elif is_docx %}
+            <iframe class="embed-viewer"
+                src="https://docs.google.com/gview?url={{ request.scheme }}://{{ request.get_host }}{{ file.file.url }}&embedded=true">
+            </iframe>
+
+            {% else %}
+            <div class="action-area text-center">
+                <p class="text-muted mb-4">Preview is not available for this file type.</p>
+                <a href="{{ file.file.url }}" class="btn-download" download>
+                    <i class="bi bi-cloud-download fs-5"></i> Download File
+                </a>
+            </div>
+            {% endif %}
+
+            {% if request.user.is_staff and file.is_editable %}
+            <div class="action-area">
+                <div class="upload-section">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-arrow-repeat me-2 text-primary"></i>Replace This File</h6>
+                    <form method="POST" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <input type="file" name="new_file" class="form-control" required>
+                            <div class="form-text text-muted small mt-1">Uploading replaces the current version.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small">New Expiry Date & Time</label>
+                            <input type="datetime-local" name="expiry_at" class="form-control"
+                                value="{% if file.expiry_at %}{{ file.expiry_at|date:'Y-m-d\TH:i' }}{% endif %}"
+                                required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">
+                            <i class="bi bi-cloud-upload me-2"></i>Confirm & Replace
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if not file.is_editable %}
+            <div class="action-area">
+                <div class="alert alert-warning text-center mb-0">
+                    <i class="bi bi-lock-fill me-2"></i> This file is in <strong>View Only</strong> mode.
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+    {% endif %}
+
+
+    <!-- ══════════════════════════════════════════
+     REPLACE FILE MODAL  (master + Excel only)
+══════════════════════════════════════════ -->
+    {% if request.user.is_staff and file.is_editable and is_excel %}
+    <div class="modal fade" id="replaceModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="POST" enctype="multipart/form-data" class="modal-content">
+                {% csrf_token %}
+                <div class="modal-header border-0">
+                    <h5 class="fw-bold">Replace File</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">New File</label>
+                        <input type="file" name="new_file" class="form-control" required>
+                        <div class="form-text text-muted small">Uploading replaces the current version.</div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label text-muted small">New Expiry Date & Time</label>
+                        <input type="datetime-local" name="expiry_at" class="form-control"
+                            value="{% if file.expiry_at %}{{ file.expiry_at|date:'Y-m-d\TH:i' }}{% endif %}" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary fw-semibold">
+                        <i class="bi bi-cloud-upload me-2"></i>Replace
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- ══════════════════════════════════════════
+     SCRIPTS
+══════════════════════════════════════════ -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Countdown timer -->
+    <script>
+        var expiryTime = parseInt("{{ file.get_expiry_timestamp }}", 10);
+        var timerPill = document.getElementById('timer-pill');
+
+        function updateTimer() {
+            var distance = expiryTime - Date.now();
+            if (distance <= 0) {
+                timerPill.textContent = 'EXPIRED';
+                timerPill.classList.add('expired');
+            } else {
+                var h = Math.floor(distance / 3600000);
+                var m = Math.floor((distance % 3600000) / 60000);
+                var s = Math.floor((distance % 60000) / 1000);
+                timerPill.textContent = h + 'h ' + m + 'm ' + s + 's left';
+            }
+        }
+        setInterval(updateTimer, 1000);
+        updateTimer();
+    </script>
+
+    {% if is_excel %}
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet@latest/dist/plugins/js/plugin.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet@latest/dist/luckysheet.umd.js"></script>
+
+    <script>
+        var fileId = parseInt("{{ file.id }}", 10);
+        var canEdit = "{{ file.is_editable|yesno:'true,false' }}" === "true";
+        var loadUrl = "{% url 'load_excel' file.id %}";
+        var saveUrl = "{% url 'save_excel' file.id %}";
+        var csrfToken = "{{ csrf_token }}";
+
+        fetch(loadUrl)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) {
+                    document.getElementById('luckysheet-container').innerHTML =
+                        '<div class="alert alert-danger m-4">' + data.error + '</div>';
+                    return;
+                }
+
+                var sheets = data.sheets.map(function (s, i) {
+                    return {
+                        name: s.name,
+                        index: String(i),
+                        order: String(i),
+                        status: i === 0 ? 1 : 0,
+                        celldata: s.celldata,
+                        row: s.row,
+                        column: s.column,
+                    };
+                });
+
+                luckysheet.create({
+                    container: 'luckysheet-container',
+                    data: sheets,
+                    showtoolbar: canEdit,
+                    showinfobar: false,
+                    showstatisticBar: false,
+                    sheetBottomConfig: false,
+                    allowEdit: canEdit,
+                    enableAddRow: canEdit,
+                    enableAddBackTop: false,
+                    lang: 'en',
+                    plugins: [],
+                });
+            })
+            .catch(function (err) {
+                document.getElementById('luckysheet-container').innerHTML =
+                    '<div class="alert alert-danger m-4">Failed to load file: ' + err + '</div>';
+            });
+
+        function saveExcel() {
+            if (!canEdit) { return; }
+
+            var allSheets = luckysheet.getAllSheets();
+            var payload = {
+                sheets: allSheets.map(function (s) {
+                    // getAllSheets() stores the live grid in s.data (2D array).
+                    // s.celldata is only the initial load snapshot — it won't have edits.
+                    var celldata = [];
+                    var grid = s.data || [];
+                    for (var r = 0; r < grid.length; r++) {
+                        if (!grid[r]) { continue; }
+                        for (var c = 0; c < grid[r].length; c++) {
+                            var cell = grid[r][c];
+                            if (cell === null || cell === undefined) { continue; }
+                            celldata.push({ r: r, c: c, v: cell });
+                        }
+                    }
+                    return { name: s.name, celldata: celldata };
+                })
+            };
+
+            fetch(saveUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify(payload),
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.status === 'saved') {
+                        showToast('Changes saved successfully!', 'success');
+                    } else {
+                        showToast(data.error || 'Save failed.', 'danger');
+                    }
+                })
+                .catch(function () { showToast('Network error. Could not save.', 'danger'); });
+        }
+
+        function showToast(msg, type) {
+            var toast = document.createElement('div');
+            toast.className = 'alert alert-' + type + ' shadow position-fixed bottom-0 start-50 translate-middle-x mb-5';
+            toast.style.cssText = 'z-index:99999;min-width:260px;text-align:center;font-weight:600;';
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(function () { toast.remove(); }, 3000);
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveExcel();
+            }
+        });
+    </script>
+    {% endif %}
+
+</body>
+
+</html>
